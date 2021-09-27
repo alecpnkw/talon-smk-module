@@ -1,0 +1,127 @@
+# The main entry point of your workflow.
+# After configuring, running snakemake -n in a clone of this repository should successfully execute a dry-run of the workflow.
+
+#report: "report/workflow.rst"
+
+# Allow users to fix the underlying OS via singularity.
+#singularity: "docker://continuumio/miniconda3"
+
+#includes config rule...
+include: "rules/common.smk"
+
+rule all:
+    input:
+        expand("results/{dataset}_talon_abundance_filtered.tsv", dataset = samples["dataset"]),
+        expand("results/{dataset}_talon.gtf", dataset = samples["dataset"]),
+        expand("results/labeled/{sample}_labeled.sam", sample = samples.index)
+
+#initialize db (uses SQLite)...
+rule talon_initialize:
+    input:
+        config["annotation"]
+    output:
+        "results/gene_models.db"
+    params:
+        annot = basename(config["annotation"]),
+        build = basename(config["reference"]),
+        output_prefix = lambda wildcards, output: output[0].split('.')[0]
+    shell: 
+        "talon_initialize_database --f {input} --a {params.annot} --g {params.build} --o {params.output_prefix}"
+
+#label primers...
+rule talon_label:
+    input:
+        "resources/{sample}.sam"
+    output:
+        "results/labeled/{sample}_labeled.sam",
+        "results/labeled/{sample}_read_labels.tsv"
+    threads: 1
+    params:
+        output_prefix = lambda wc, output: output[0].split('_labeled.sam')[0],
+        ref = config["reference"],
+        ar = 20
+    shell:
+        "talon_label_reads --f {input} --g {params.ref}  --t {threads} --ar {params.ar} --deleteTmp --o {params.output_prefix}"
+
+#samples (dataframe) must be defined...
+def talon_input(wc):
+    keeps = samples.dataset == wc.dataset
+    return ["results/labeled/{0}_labeled.sam".format(s) for s in samples.index[keeps]]
+
+def labeled_paths(wc):
+    return ["results/labeled/{0}_labeled.sam".format(s) for s in samples.index]
+
+#writes a new config.csv... 
+rule gen_talon_config:
+    params:
+        config = "config/samples.csv",
+        paths = labeled_paths
+    output:
+        "results/{dataset}_config.csv"
+    run:
+        import pandas as pd
+        tbl = pd.read_csv(params.config, sep = ',')
+        tbl["file"] = params.paths
+        keeps = tbl.dataset == wildcards.dataset
+        cols = ["sample", "dataset", "source", "file"]
+        tbl.loc[keeps, cols].to_csv(output[0], header = False, index = False)
+
+#TALON... 
+rule talon:
+    input:
+        talon_input,
+        config = "results/{dataset}_config.csv",
+        db = "results/gene_models.db",
+    params: 
+        build = basename(config["reference"])
+    output:
+        "results/{dataset}_QC.log"
+    shell: 
+        "talon --f {input.config} --db {input.db} --build {params.build} --o results/{wildcards.dataset}"
+
+#transcript model filtering... 
+#dataset names need to match talon config...
+rule talon_filter:
+    input:
+        "results/gene_models.db",
+        "results/{dataset}_QC.log"
+    output:
+        "results/{dataset}_filtered_transcripts.csv"
+    params:
+        samples = lambda wc: ",".join(samples.index[samples.dataset == wc.dataset]),
+        maxFracA = 0.5,
+        minCount = 5,
+        minDatasets = 2,
+        annot = basename(config["annotation"])
+    shell:
+        """talon_filter_transcripts --db {input[0]} --datasets {params.samples} -a {params.annot} \
+         --maxFracA {params.maxFracA} --minCount {params.minCount} --minDatasets {params.minDatasets} --o {output}"""
+
+#tabulate
+rule talon_abundance:
+    input:
+        "results/gene_models.db",
+        "results/{dataset}_filtered_transcripts.csv"
+    output: 
+        "results/{dataset}_talon_abundance_filtered.tsv"
+    params:
+        annot = basename(config["annotation"]),
+        build = basename(config["reference"]),
+        output_prefix = lambda wc, output: output[0].split("_talon_abundance_filtered.tsv")[0]
+    shell:
+        """talon_abundance --db {input[0]} \
+        --whitelist {input[1]} -a {params.annot} --build {params.build} --o {params.output_prefix}"""
+
+#GTF
+rule talon_GTF:
+    input:
+        "results/gene_models.db",
+        "results/{dataset}_filtered_transcripts.csv"
+    output:
+        "results/{dataset}_talon.gtf"
+    params:
+        annot = basename(config["annotation"]),
+        build = basename(config["reference"]),
+        output_prefix = lambda wc, output: output[0][:-10] 
+    shell: 
+        "talon_create_GTF --db {input[0]} --whitelist {input[1]} -a {params.annot} --build {params.build} --o {params.output_prefix}"
