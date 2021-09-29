@@ -22,7 +22,7 @@ rule talon_initialize:
     output:
         "results/gene_models.db"
     conda:
-        "talon.yaml"
+        "envs/talon.yaml"
     params:
         annot = basename(config["annotation"]),
         build = basename(config["reference"]),
@@ -38,7 +38,7 @@ rule talon_label:
         "results/labeled/{sample}_labeled.sam",
         "results/labeled/{sample}_read_labels.tsv"
     conda:
-        "talon.yaml"
+        "envs/talon.yaml"
     threads: 1
     params:
         output_prefix = lambda wc, output: output[0].split('_labeled.sam')[0],
@@ -62,8 +62,6 @@ rule gen_talon_config:
         paths = labeled_paths
     output:
         "results/{dataset}_config.csv"
-    conda:
-        "talon.yaml"
     run:
         import pandas as pd
         tbl = pd.read_csv(params.config, sep = ',')
@@ -83,7 +81,7 @@ rule talon:
     output:
         "results/{dataset}_QC.log"
     conda:
-        "talon.yaml"
+        "envs/talon.yaml"
     shell: 
         "talon --f {input.config} --db {input.db} --build {params.build} --o results/{wildcards.dataset}"
 
@@ -102,7 +100,7 @@ rule talon_filter:
         minDatasets = 2,
         annot = basename(config["annotation"])
     conda:
-        "talon.yaml"
+        "envs/talon.yaml"
     shell:
         """talon_filter_transcripts --db {input[0]} --datasets {params.samples} -a {params.annot} \
          --maxFracA {params.maxFracA} --minCount {params.minCount} --minDatasets {params.minDatasets} --o {output}"""
@@ -115,7 +113,7 @@ rule talon_abundance:
     output: 
         "results/{dataset}_talon_abundance_filtered.tsv"
     conda:
-        "talon.yaml"
+        "envs/talon.yaml"
     params:
         annot = basename(config["annotation"]),
         build = basename(config["reference"]),
@@ -132,7 +130,7 @@ rule talon_GTF:
     output:
         "results/{dataset}_talon.gtf"
     conda:
-        "talon.yaml"
+        "envs/talon.yaml"
     params:
         annot = basename(config["annotation"]),
         build = basename(config["reference"]),
