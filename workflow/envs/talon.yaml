@@ -1,0 +1,7 @@
+name: talon
+channels:
+  - bioconda
+  - conda-forge
+dependencies:
+  - talon
+  - python=3.7

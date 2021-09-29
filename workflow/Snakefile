@@ -21,6 +21,8 @@ rule talon_initialize:
         config["annotation"]
     output:
         "results/gene_models.db"
+    conda:
+        "talon.yaml"
     params:
         annot = basename(config["annotation"]),
         build = basename(config["reference"]),
@@ -35,6 +37,8 @@ rule talon_label:
     output:
         "results/labeled/{sample}_labeled.sam",
         "results/labeled/{sample}_read_labels.tsv"
+    conda:
+        "talon.yaml"
     threads: 1
     params:
         output_prefix = lambda wc, output: output[0].split('_labeled.sam')[0],
@@ -58,6 +62,8 @@ rule gen_talon_config:
         paths = labeled_paths
     output:
         "results/{dataset}_config.csv"
+    conda:
+        "talon.yaml"
     run:
         import pandas as pd
         tbl = pd.read_csv(params.config, sep = ',')
@@ -76,6 +82,8 @@ rule talon:
         build = basename(config["reference"])
     output:
         "results/{dataset}_QC.log"
+    conda:
+        "talon.yaml"
     shell: 
         "talon --f {input.config} --db {input.db} --build {params.build} --o results/{wildcards.dataset}"
 
@@ -93,6 +101,8 @@ rule talon_filter:
         minCount = 5,
         minDatasets = 2,
         annot = basename(config["annotation"])
+    conda:
+        "talon.yaml"
     shell:
         """talon_filter_transcripts --db {input[0]} --datasets {params.samples} -a {params.annot} \
          --maxFracA {params.maxFracA} --minCount {params.minCount} --minDatasets {params.minDatasets} --o {output}"""
@@ -104,6 +114,8 @@ rule talon_abundance:
         "results/{dataset}_filtered_transcripts.csv"
     output: 
         "results/{dataset}_talon_abundance_filtered.tsv"
+    conda:
+        "talon.yaml"
     params:
         annot = basename(config["annotation"]),
         build = basename(config["reference"]),
@@ -119,6 +131,8 @@ rule talon_GTF:
         "results/{dataset}_filtered_transcripts.csv"
     output:
         "results/{dataset}_talon.gtf"
+    conda:
+        "talon.yaml"
     params:
         annot = basename(config["annotation"]),
         build = basename(config["reference"]),
